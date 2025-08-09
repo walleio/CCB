@@ -10,6 +10,9 @@ import random
 import tqdm
 import sys
 from backbone_template import MLP
+from utils import set_seed
+
+set_seed(int(sys.argv[4]))
 
 data_type = sys.argv[1]
 num_epochs = int(sys.argv[2])

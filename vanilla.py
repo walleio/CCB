@@ -8,6 +8,9 @@ from backbone import ModelXtoCtoY_function
 import numpy as np
 import random
 from sklearn.metrics import roc_auc_score
+from utils import set_seed
+
+set_seed(int(sys.argv[4]))
 
 # this is the tokenizer that we use for encoding SMILES strings
 model_name = 'mikemayuare/SMILY-APE-BBBP'
@@ -31,7 +34,7 @@ means = DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).mean().values
 stds = DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).std().values
 
 # there are 200 features, so we randomly sample 10 of them
-features = random.sample(range(200), 10)
+features = random.sample(range(200), 30)
 
 num_concepts = len(features)
 

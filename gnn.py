@@ -8,10 +8,13 @@ import numpy as np
 from backbone_template import MLP
 import random
 import sys
+from utils import set_seed
 
 data_type = sys.argv[1]
 num_epochs = int(sys.argv[2])
 experiment = sys.argv[3]
+
+set_seed(int(sys.argv[4]))
 
 # molecules are PyG objects, so we need to attach the y and concepts to the object
 def attach_y_and_concepts(row):
@@ -25,7 +28,8 @@ test_data = pd.read_csv(f"data/test_{data_type}.csv")
 val_data = pd.read_csv(f"data/val_{data_type}.csv")
 
 # choose 30 features randomly
-features = random.sample(train_data.drop(columns=['Drug', 'Y', 'Drug_ID']).columns.tolist(), 30)
+num_concepts = 30
+features = random.sample(train_data.drop(columns=['Drug', 'Y', 'Drug_ID']).columns.tolist(), num_concepts)
 num_concepts = len(features)
 
 # turn the SMILES strings into PyG objects
