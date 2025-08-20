@@ -3,13 +3,12 @@ import pandas as pd
 import torch
 from torch_geometric.nn import GINEConv, global_add_pool
 from torch_geometric.utils.smiles import from_smiles
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import roc_auc_score
 import numpy as np
 from backbone_template import MLP
 import random
 import sys
 from utils import set_seed, agent
-from backbone import ModelXtoCtoY_function
 
 data_type = sys.argv[1]
 num_epochs = int(sys.argv[2])
@@ -42,7 +41,7 @@ if data_type == 'dili':
     if num_concepts == 30:
         features = ['MolLogP', 'TPSA', 'MolWt', 'NumRotatableBonds', 'FractionCSP3', 'fr_aniline', 'fr_nitro_arom', 'NumAromaticRings', 'MaxAbsPartialCharge', 'qed', 'fr_thiophene', 'fr_furan', 'HeavyAtomCount', 'NumHDonors', 'NumHAcceptors', 'fr_quatN', 'fr_sulfonamd', 'RingCount', 'LabuteASA', 'fr_para_hydroxylation', 'fr_phenol', 'BertzCT', 'fr_halogen', 'fr_aryl_methyl', 'SlogP_VSA10', 'EState_VSA2', 'NumHeteroatoms', 'FpDensityMorgan2', 'MinAbsPartialCharge', 'fr_Ar_N']
     elif num_concepts == 50:
-        features = ['MolLogP', 'MolWt', 'TPSA', 'NumRotatableBonds', 'NumHDonors', 'NumHAcceptors', 'HeavyAtomCount', 'NumAromaticRings', 'LabuteASA', 'fr_aniline', 'fr_nitro_arom', 'fr_para_hydroxylation', 'fr_phenol', 'fr_thiophene', 'fr_furan', 'fr_quatN', 'fr_sulfonamd', 'fr_amide', 'fr_Ar_N', 'fr_aryl_methyl', 'fr_epoxide', 'fr_C_O_noCOO', 'fr_ether', 'fr_halogen', 'fr_Ndealkylation1', 'fr_Ndealkylation2', 'fr_Ar_OH', 'fr_sulfone', 'fr_bicyclic', 'MaxAbsPartialCharge', 'MinAbsPartialCharge', 'MaxEStateIndex', 'MinEStateIndex', 'FractionCSP3', 'qed', 'SlogP_VSA1', 'SlogP_VSA10', 'SlogP_VSA2', 'SlogP_VSA4', 'SlogP_VSA5', 'PEOE_VSA1', 'PEOE_VSA10', 'PEOE_VSA2', 'PEOE_VSA6', 'PEOE_VSA7', 'EState_VSA1', 'EState_VSA10', 'EState_VSA2', 'EState_VSA5', 'EState_VSA8']
+        features ['MolLogP', 'MolWt', 'TPSA', 'NumRotatableBonds', 'NumHDonors', 'NumHAcceptors', 'HeavyAtomCount', 'NumAromaticRings', 'LabuteASA', 'fr_aniline', 'fr_nitro_arom', 'fr_para_hydroxylation', 'fr_phenol', 'fr_thiophene', 'fr_furan', 'fr_quatN', 'fr_sulfonamd', 'fr_amide', 'fr_Ar_N', 'fr_aryl_methyl', 'fr_epoxide', 'fr_C_O_noCOO', 'fr_ether', 'fr_halogen', 'fr_Ndealkylation1', 'fr_Ndealkylation2', 'fr_Ar_OH', 'fr_sulfone', 'fr_bicyclic', 'MaxAbsPartialCharge', 'MinAbsPartialCharge', 'MaxEStateIndex', 'MinEStateIndex', 'FractionCSP3', 'qed', 'SlogP_VSA1', 'SlogP_VSA10', 'SlogP_VSA2', 'SlogP_VSA4', 'SlogP_VSA5', 'PEOE_VSA1', 'PEOE_VSA10', 'PEOE_VSA2', 'PEOE_VSA6', 'PEOE_VSA7', 'EState_VSA1', 'EState_VSA10', 'EState_VSA2', 'EState_VSA5', 'EState_VSA8']
     elif num_concepts == 10:
         features = ['MolLogP', 'MolWt', 'TPSA', 'fr_aniline', 'NumRotatableBonds', 'fr_nitro_arom', 'fr_thiophene', 'fr_phenol', 'MaxAbsPartialCharge', 'fr_aldehyde']
 elif data_type == 'bbbp':
@@ -73,7 +72,7 @@ test_loader = DataLoader(test_data['Drug'], batch_size=32, shuffle=False)
 
 # define the model
 class MolNet(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, baseline):
+    def __init__(self, in_channels, hidden_channels, out_channels):
         super(MolNet, self).__init__()
         nn1 = torch.nn.Sequential(torch.nn.Linear(in_channels, hidden_channels),
                                  torch.nn.ReLU(),
@@ -87,11 +86,10 @@ class MolNet(torch.nn.Module):
         self.conv1 = GINEConv(nn1, edge_dim=3)
         self.conv2 = GINEConv(nn2, edge_dim=3)
         self.readout = global_add_pool
-        self.baseline = baseline
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_channels, hidden_channels),
             torch.nn.ReLU(),
-            torch.nn.Linear(hidden_channels, 1)
+            torch.nn.Linear(hidden_channels, out_channels)
         )
 
     def forward(self, data):
@@ -100,21 +98,15 @@ class MolNet(torch.nn.Module):
         x = self.conv1(x.to(torch.float32), edge_index, edge_attr.to(torch.float32)).relu()
         x = self.conv2(x.to(torch.float32), edge_index, edge_attr.to(torch.float32)).relu()
         x = self.readout(x, batch)
-        if self.baseline == 'baseline':
-            return self.mlp(x)
-        else:
-            return x
+        return self.mlp(x)
 
 # initialize the model, optimizer, and loss functions
 if experiment == 'baseline':
     num_concepts = 1
 
-ModelXtoCtoY_layer = ModelXtoCtoY_function(num_concepts=num_concepts, expand_dim=0)
-model = MolNet(in_channels=train_data['Drug'][1].x.shape[1], hidden_channels=768, baseline=experiment)
-if experiment != 'baseline':
-    optimizer = torch.optim.AdamW(list(model.parameters()) + list(ModelXtoCtoY_layer.parameters()), lr=2e-4)
-else:
-    optimizer = torch.optim.AdamW(list(model.parameters()), lr=2e-4)
+model = MolNet(in_channels=train_data['Drug'][1].x.shape[1], hidden_channels=256, out_channels=num_concepts)
+mlp = MLP(input_dim=num_concepts, expand_dim=0)
+optimizer = torch.optim.AdamW(list(model.parameters()) + list(mlp.parameters()), lr=2e-4)
 loss_C = torch.nn.L1Loss()
 loss_Y = torch.nn.BCEWithLogitsLoss()
 
@@ -127,45 +119,25 @@ for epoch in range(num_epochs):
         if experiment == 'baseline':
             loss = loss_Y(output.squeeze(), data.y)
         else:
-            outputs = ModelXtoCtoY_layer(output)
-            XtoC_output = outputs[1:] 
-            XtoY_output = outputs[0:1]
-
-            # XtoC_loss
-            XtoC_output = torch.stack(XtoC_output, dim=1).squeeze()
-            XtoC_loss = loss_C(torch.flatten(XtoC_output).to('cuda:0'), data.concepts.squeeze().to('cuda:0'))
-        
-            # XtoY_loss
-            XtoY_loss = loss_Y(XtoY_output[0].squeeze().to('cuda:0'), data.y.squeeze().to('cuda:0'))
-        
-            loss = XtoY_loss + XtoC_loss * 0.5
+            loss_c = loss_C(output.reshape(-1), data.concepts)
+            loss_y = loss_Y(mlp(output).squeeze(), data.y)
+            loss = loss_c * 0.5 + loss_y
         loss.backward()
         optimizer.step()
 
 # test the model
 with torch.no_grad():
     model.eval()
-    ModelXtoCtoY_layer.eval()
+    mlp.eval()
     predictions = np.array([])
     true_labels = np.array([])
     for data in test_loader:
         output = model(data)
         if experiment == 'baseline':
             predictions = np.append(predictions, output.numpy())
-            true_labels = np.append(true_labels, data.y.numpy())
         else:
-            outputs = ModelXtoCtoY_layer(output)
-            XtoC_output = outputs[1:] 
-            XtoY_output = outputs[0:1]
-
-            # XtoC_loss
-            XtoC_output = torch.stack(XtoC_output, dim=1).squeeze()
-            XtoC_loss = loss_C(torch.flatten(XtoC_output).to('cuda:0'), data.concepts.squeeze().to('cuda:0'))
-        
-            # XtoY_loss
-            XtoY_loss = loss_Y(XtoY_output[0].squeeze().to('cuda:0'), data.y.squeeze().to('cuda:0'))
-        
-            predictions = np.append(predictions, XtoY_output[0].squeeze().numpy())
-            true_labels = np.append(true_labels, data.y.squeeze().numpy())
+            mlp_output = mlp(output)
+            predictions = np.append(predictions, mlp_output.numpy())
+        true_labels = np.append(true_labels, data.y.numpy())
 
     print(f'Test roc_auc_score = {roc_auc_score(true_labels, predictions)}')

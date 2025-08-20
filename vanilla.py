@@ -8,7 +8,10 @@ from backbone import ModelXtoCtoY_function
 import numpy as np
 import random
 from sklearn.metrics import roc_auc_score
-from utils import set_seed
+from utils import set_seed, agent
+import ast
+import pickle as pkl
+from utils import MyDataset
 
 set_seed(int(sys.argv[4]))
 
@@ -17,6 +20,7 @@ model_name = 'mikemayuare/SMILY-APE-BBBP'
 tokenizer = APETokenizer()
 tokenizer.load_vocabulary('apetokenizer/tokenizer.json')
 model = AutoModelForSequenceClassification.from_pretrained('mikemayuare/SMILY-APE-BBBP').to('cuda')
+model.eval()
 
 # get the data type and number of epochs from the command line
 data_type = sys.argv[1]
@@ -29,49 +33,39 @@ DATA['train'] = pd.read_csv(f'data/train_{data_type}.csv')
 DATA['val'] = pd.read_csv(f'data/val_{data_type}.csv')
 DATA['test'] = pd.read_csv(f'data/test_{data_type}.csv')
 
-# get data statistics
-means = DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).mean().values
-stds = DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).std().values
+# choose num_concepts features with gemini agent
+num_concepts = int(sys.argv[5])
+'''
+features = agent(data_type, DATA['train'].drop(columns=['Drug', 'Y', 'Drug_ID']).columns.tolist(), num_concepts)
+print(features)
+features = ast.literal_eval(features)
+'''
+# choose features based on data type
+if data_type == 'dili':
+    if num_concepts == 30:
+        features = ['MolLogP', 'TPSA', 'MolWt', 'NumRotatableBonds', 'FractionCSP3', 'fr_aniline', 'fr_nitro_arom', 'NumAromaticRings', 'MaxAbsPartialCharge', 'qed', 'fr_thiophene', 'fr_furan', 'HeavyAtomCount', 'NumHDonors', 'NumHAcceptors', 'fr_quatN', 'fr_sulfonamd', 'RingCount', 'LabuteASA', 'fr_para_hydroxylation', 'fr_phenol', 'BertzCT', 'fr_halogen', 'fr_aryl_methyl', 'SlogP_VSA10', 'EState_VSA2', 'NumHeteroatoms', 'FpDensityMorgan2', 'MinAbsPartialCharge', 'fr_Ar_N']
+    elif num_concepts == 50:
+        features = ['MolLogP', 'MolWt', 'TPSA', 'NumRotatableBonds', 'NumHDonors', 'NumHAcceptors', 'HeavyAtomCount', 'NumAromaticRings', 'LabuteASA', 'fr_aniline', 'fr_nitro_arom', 'fr_para_hydroxylation', 'fr_phenol', 'fr_thiophene', 'fr_furan', 'fr_quatN', 'fr_sulfonamd', 'fr_amide', 'fr_Ar_N', 'fr_aryl_methyl', 'fr_epoxide', 'fr_C_O_noCOO', 'fr_ether', 'fr_halogen', 'fr_Ndealkylation1', 'fr_Ndealkylation2', 'fr_Ar_OH', 'fr_sulfone', 'fr_bicyclic', 'MaxAbsPartialCharge', 'MinAbsPartialCharge', 'MaxEStateIndex', 'MinEStateIndex', 'FractionCSP3', 'qed', 'SlogP_VSA1', 'SlogP_VSA10', 'SlogP_VSA2', 'SlogP_VSA4', 'SlogP_VSA5', 'PEOE_VSA1', 'PEOE_VSA10', 'PEOE_VSA2', 'PEOE_VSA6', 'PEOE_VSA7', 'EState_VSA1', 'EState_VSA10', 'EState_VSA2', 'EState_VSA5', 'EState_VSA8']
+    elif num_concepts == 10:
+        features = ['MolLogP', 'MolWt', 'TPSA', 'fr_aniline', 'NumRotatableBonds', 'fr_nitro_arom', 'fr_thiophene', 'fr_phenol', 'MaxAbsPartialCharge', 'fr_aldehyde']
+elif data_type == 'bbbp':
+    if num_concepts == 30:
+        features = ['MolLogP', 'TPSA', 'MolWt', 'NumHDonors', 'NumHAcceptors', 'NumRotatableBonds', 'FractionCSP3', 'qed', 'HeavyAtomCount', 'MolMR', 'fr_quatN', 'fr_COO', 'NHOHCount', 'LabuteASA', 'MaxEStateIndex', 'MinEStateIndex', 'MaxAbsPartialCharge', 'SlogP_VSA3', 'SMR_VSA5', 'PEOE_VSA7', 'EState_VSA2', 'VSA_EState9', 'FpDensityMorgan2', 'BertzCT', 'RingCount', 'NumAromaticRings', 'NOCount', 'fr_aniline', 'fr_amide', 'fr_ether']
+    elif num_concepts == 50:
+        features = ['MolLogP', 'TPSA', 'MolWt', 'NumHDonors', 'NumHAcceptors', 'NumRotatableBonds', 'MolMR', 'LabuteASA', 'FractionCSP3', 'HeavyAtomCount', 'RingCount', 'NOCount', 'NHOHCount', 'MaxAbsPartialCharge', 'MinAbsPartialCharge', 'qed', 'ExactMolWt', 'NumAromaticRings', 'NumHeteroatoms', 'SlogP_VSA2', 'SlogP_VSA3', 'SlogP_VSA5', 'SlogP_VSA8', 'EState_VSA1', 'EState_VSA2', 'EState_VSA10', 'VSA_EState9', 'PEOE_VSA6', 'PEOE_VSA7', 'PEOE_VSA8', 'PEOE_VSA9', 'SMR_VSA5', 'SMR_VSA7', 'MaxEStateIndex', 'MinEStateIndex', 'MaxAbsEStateIndex', 'MinAbsEStateIndex', 'BalabanJ', 'BertzCT', 'HallKierAlpha', 'Kappa2', 'Ipc', 'fr_amide', 'fr_aniline', 'fr_Ar_N', 'fr_COO', 'fr_ether', 'fr_phenol', 'fr_quatN', 'fr_unbrch_alkane']
+    elif num_concepts == 10:
+        features = ['MolWt', 'MolLogP', 'TPSA', 'NumHDonors', 'NumHAcceptors', 'NumRotatableBonds', 'HeavyAtomCount', 'NOCount', 'FractionCSP3', 'qed']
+elif data_type == 'lipo':
+    if num_concepts == 30:
+        features = ['MolLogP', 'TPSA', 'MolMR', 'LabuteASA', 'SlogP_VSA1', 'SlogP_VSA2', 'SlogP_VSA4', 'SlogP_VSA5', 'SlogP_VSA10', 'SMR_VSA1', 'SMR_VSA5', 'SMR_VSA7', 'SMR_VSA10', 'PEOE_VSA6', 'PEOE_VSA7', 'PEOE_VSA8', 'EState_VSA1', 'EState_VSA2', 'EState_VSA10', 'NumHAcceptors', 'NumHDonors', 'NOCount', 'HeavyAtomCount', 'NumRotatableBonds', 'FractionCSP3', 'RingCount', 'fr_halogen', 'fr_amide', 'fr_benzene', 'fr_ether']
 
-# there are 200 features, so we randomly sample 10 of them
-features = random.sample(range(200), 30)
-
-num_concepts = len(features)
-
-# create the dataset
-class MyDataset(Dataset):
-    def __init__(self, split, label_means, label_stds):
-        self.data = DATA[split]
-        self.means = label_means
-        self.stds = label_stds
-        self.stds[self.stds == 0] = 1
-        self.labels = self.data['Y']
-        self.text = self.data["Drug"]
-
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, index):
-        tokenized_text = tokenizer(
-            self.text[index], 
-            max_length=64,
-            add_special_tokens=True,
-            padding='max_length',
-            return_tensors='pt',
-        )
-
-        return_dict = {
-            'input_ids': tokenized_text['input_ids'],
-            'attention_mask': tokenized_text['attention_mask'],
-            'label': torch.tensor(self.labels[index], dtype=torch.float),
-            'concept_labels': torch.tensor((self.data.drop(columns=['Drug', 'Y', 'Drug_ID']).iloc[index].values[features] - self.means[features]) / self.stds[features])
-        }
-        return return_dict
+means = DATA['train'][features].mean().values
+stds = DATA['train'][features].std().values
 
 # create the dataloader
-train_loader = DataLoader(MyDataset('train', means, stds), batch_size=32, shuffle=True)
-val_loader = DataLoader(MyDataset('val', means, stds), batch_size=32, shuffle=False)
-test_loader = DataLoader(MyDataset('test', means, stds), batch_size=32, shuffle=False)
+train_loader = DataLoader(MyDataset('train', features, means, stds, tokenizer, DATA), batch_size=32, shuffle=True)
+val_loader = DataLoader(MyDataset('val', features, means, stds, tokenizer, DATA), batch_size=32, shuffle=False)
+test_loader = DataLoader(MyDataset('test', features, means, stds, tokenizer, DATA), batch_size=32, shuffle=False)
 
 # num_concepts is the number of concepts, expand_dim is the dimension of the expanded layer (0 means no expansion)
 if experiment == 'baseline':
@@ -86,7 +80,10 @@ loss_C = torch.nn.L1Loss().to('cuda:0')
 loss_Y = torch.nn.BCEWithLogitsLoss().to('cuda:0')
 
 # TODO: add optimizer to LLM parameters
-optimizer = torch.optim.Adam(list(ModelXtoCtoY_layer.parameters()), lr=1e-5)
+if experiment == 'baseline':
+    optimizer = torch.optim.Adam(list(ModelXtoCtoY_layer.parameters()), lr=1e-5)
+else:
+    optimizer = torch.optim.Adam(list(ModelXtoCtoY_layer.parameters()) + list(model.parameters()), lr=1e-5)
 
 best_acc_score = 0
 for epoch in range(num_epochs):
@@ -127,7 +124,6 @@ for epoch in range(num_epochs):
         optimizer.step()
 
     ######### val #########
-    model.eval()
     ModelXtoCtoY_layer.eval()
     val_accuracy = 0.
     concept_val_loss = 0.
@@ -164,11 +160,13 @@ for epoch in range(num_epochs):
         if experiment != 'baseline':
             concept_val_loss = concept_val_loss / len(predict_labels)
         
+    '''
     if experiment == 'baseline':
         print(f'Epoch {epoch + 1}: Val Acc = {val_accuracy*100}')
     else:
         print(f'Epoch {epoch + 1}: Val Acc = {val_accuracy*100}')
         print(f'Epoch {epoch + 1}: Val concept MAE = {concept_val_loss}')
+    '''
 
     if val_accuracy > best_acc_score:
         best_acc_score = val_accuracy
@@ -193,21 +191,23 @@ for epoch in range(num_epochs):
 
             outputs = model(input_ids=input_ids.to('cuda:0').squeeze(), attention_mask=attention_mask.to('cuda:0').squeeze(), output_hidden_states=True)
 
-            pooled_output = outputs.hidden_states[-1][:,0] 
+            pooled_output = outputs.hidden_states[-1][:,0]
 
             outputs = ModelXtoCtoY_layer(pooled_output)
             if experiment == 'baseline':
                 XtoY_output = outputs
                 predictions = np.append(predictions, XtoY_output.squeeze().cpu())
-                predict_labels = np.append(predict_labels, (XtoY_output.squeeze().cpu() > 0.5) == label.bool().cpu())
+                predict_labels = np.append(predict_labels, (XtoY_output.squeeze().cpu() > 0.0) == label.bool().cpu())
             else:
                 XtoY_output = outputs[0:1]
                 predictions = np.append(predictions, XtoY_output[0].squeeze().cpu())
-                predict_labels = np.append(predict_labels, (XtoY_output[0].squeeze().cpu() > 0.5) == label.bool().cpu())
+                predict_labels = np.append(predict_labels, (XtoY_output[0].squeeze().cpu() > 0.0) == label.bool().cpu())
 
             true_labels = np.append(true_labels, label.bool().cpu())
 
         test_accuracy = predict_labels.sum() / len(predict_labels)
 
+    with open(f'models/val_data_{data_type}_vanilla.pkl', 'wb') as f:
+        pkl.dump(val_loader, f)
     print(f'Test Acc = {test_accuracy*100}')
     print(f'Test roc_auc_score = {roc_auc_score(true_labels, predictions)}')

@@ -1,1 +1,6 @@
 models/*
+script_dili.sh
+script_bbbp.sh
+script_lipo.sh
+catboost_info/*
+scripts/*
