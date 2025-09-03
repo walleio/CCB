@@ -121,7 +121,7 @@ for epoch in range(num_epochs):
         else:
             loss_c = loss_C(output.reshape(-1), data.concepts)
             loss_y = loss_Y(mlp(output).squeeze(), data.y)
-            loss = loss_c * 0.5 + loss_y
+            loss = loss_c * float(sys.argv[8]) + loss_y
         loss.backward()
         optimizer.step()
 

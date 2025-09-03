@@ -9,17 +9,22 @@ model_type = sys.argv[1]
 dataset = sys.argv[2]
 
 if model_type == 'vanilla': 
-    model = torch.load('models/j.pth', weights_only=False)
-    ModelXtoCtoY_layer = torch.load('models/xtoc.pth', weights_only=False)
+    model = torch.load('models/joint_4.pth', weights_only=False)
+    ModelXtoCtoY_layer = torch.load('models/ModelXtoCtoY_layer_joint_4.pth', weights_only=False)
     ModelXtoCtoY_layer.eval()
+    model.eval()
+elif model_type == 'gnn':
+    model = torch.load('models/gnn.pth', weights_only=False)
+    
     model.eval()
 
 if dataset == 'dili':
-    with open(f'models/val_data_dili_vanilla.pkl', 'rb') as f:
+    with open(f'models/val_data_dili_vanilla.pkl_4', 'rb') as f:
         val_loader = pkl.load(f)
     
     predictions = np.array([])
     true_labels = np.array([])
+    contributions_dict = {}
     for batch in val_loader:
         input_ids = batch['input_ids']
         attention_mask = batch['attention_mask']
@@ -47,14 +52,19 @@ if dataset == 'dili':
         b = last_layer.bias.squeeze()
 
         contributions = concepts.squeeze().detach().cpu().numpy()*W.detach().cpu().numpy()
-        print(f'correct label {label[0].item()}\n')
-        print(f'predicted label {contributions[0].sum()}\n')
         predictions = np.append(predictions, outputs[0].detach().cpu().numpy())
         true_labels = np.append(true_labels, label.bool().detach().cpu().numpy())
 
-        contributions_dict = {}
         for i, feature in enumerate(i[0] for i in features):
-            contributions_dict[feature] = contributions[0][i]
-        
-        contributions_dict = sorted(contributions_dict.items(), key=lambda item: item[1], reverse=True)
-        print(f'contributions: {contributions_dict}')
+            try:
+                contributions_dict[feature] = (contributions.T)[i]
+            except:
+                contributions_dict[feature] = np.append(contributions_dict[feature], (contributions.T)[i])
+    
+    average_contributions = {}
+    for feature in contributions_dict.keys():
+        average_contributions[feature] = np.mean(abs(contributions_dict[feature]))
+    
+    print(average_contributions)
+    print(predictions)
+    print(true_labels)

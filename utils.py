@@ -7,6 +7,8 @@ from google import genai
 from google.genai import types
 import os
 from torch.utils.data import Dataset
+from openai import OpenAI
+from pydantic import BaseModel
 
 def set_seed(seed: int):
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
@@ -20,7 +22,7 @@ def set_seed(seed: int):
     torch.use_deterministic_algorithms(True)
 
 def agent(task, properties, num_concepts):
-    client = genai.Client(api_key=os.getenv('GOOGLE_API_KEY'))
+    client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
     if task == 'dili':
         task = 'Predict the DILi (Drug-Induced Liver Injury) risk of a molecule.'
@@ -29,14 +31,15 @@ def agent(task, properties, num_concepts):
     elif task == 'lipo':
         task = 'Predict the LIPO (Lipophilicity) of a molecule.'
 
-    response = client.models.generate_content(
-        model='gemini-2.5-pro',
-        config=types.GenerateContentConfig(
-            system_instruction='You are a helpful chemistry assistant. You will be given a task and some properties to choose from. You will choose the properties most important for successfully completing/predicting the task.',
-            response_schema={"type": "array", "items": {"type": "string"}}
-            ),
-        contents=f'Task: {task}\nProperties: {properties}. You should choose {num_concepts} properties and return them in a list formatted exactly as they are given to you. The list should be your ONLY output.'
+    class agent_response(BaseModel):
+        selected_properties: list[str]
+
+    response = client.responses.create(
+        model = 'gpt-5',
+        instructions = 'You are a helpful chemistry assistant. You will be given a task and some properties to choose from. You will choose the properties most important for successfully completing/predicting the task.',
+        input = f'Task: {task}\nProperties: {properties}. You should choose {num_concepts} properties and return them in a list formatted exactly as they are given to you. The list should be your ONLY output.',
     )
+    print(response)
     
     return response.text
 
